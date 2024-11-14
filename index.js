@@ -3,37 +3,54 @@ const fs = require('fs');
 const ExcelJS = require('exceljs');
 const path = require('path');
 
-const url = `http://127.0.0.1/api/admin/tickets/export-list`;
-const downloadFolder = './downloads';
-const combinedFilePath = './combined_data.xlsx';
+const url = process.argv[2] || '';
 
-// Function to download JSON data from January to November 2024
-async function downloadMonthlyData() {
+console.log("URL: ", url)
+
+const status = 'all';
+const downloadFolder = './downloads';
+const combinedFilePath = `./combined_data_${status}.xlsx`;
+
+// Function to download JSON data in 10-day intervals from January to yesterday
+async function downloadDataByIntervals() {
     if (!fs.existsSync(downloadFolder)) {
         fs.mkdirSync(downloadFolder);
     }
 
-    const months = Array.from({ length: 11 }, (_, i) => i + 1); // Months 1 to 11
+    const today = new Date();
+    const startYear = 2024;
 
-    for (const month of months) {
-        const from_date = `2024-${String(month).padStart(2, '0')}-01`;
-        const to_date = `2024-${String(month).padStart(2, '0')}-30`;
-        const fileName = `tickets_2024_${month}.json`;
-        const filePath = path.join(downloadFolder, fileName);
+    for (let month = 1; month <= 12; month++) {
+        let startDay = 1;
+        while (startDay <= 31) {
+            const from_date = new Date(startYear, month - 1, startDay);
+            let endDay = startDay + 9;
+            const to_date = new Date(startYear, month - 1, endDay);
 
-        try {
-            const response = await axios.get(url, {
-                params: {
-                    from_date: from_date,
-                    to_date: to_date,
-                    status: 1
-                }
-            });
+            // Stop if the end date goes beyond today
+            if (to_date > today) break;
 
-            fs.writeFileSync(filePath, JSON.stringify(response.data, null, 2));
-            console.log(`Downloaded and saved: ${fileName}`);
-        } catch (error) {
-            console.error(`Failed to download data for month ${month}:`, error.message);
+            const formattedFromDate = from_date.toISOString().split('T')[0];
+            const formattedToDate = to_date.toISOString().split('T')[0];
+            const fileName = `tickets_${formattedFromDate}_to_${formattedToDate}.json`;
+            const filePath = path.join(downloadFolder, fileName);
+
+            try {
+                const response = await axios.get(url, {
+                    params: {
+                        from_date: formattedFromDate,
+                        to_date: formattedToDate,
+                        status: status
+                    }
+                });
+
+                fs.writeFileSync(filePath, JSON.stringify(response.data, null, 2));
+                console.log(`Downloaded and saved: ${fileName}`);
+            } catch (error) {
+                console.error(`Failed to download data for ${formattedFromDate} to ${formattedToDate}:`, error.message);
+            }
+
+            startDay += 10;
         }
     }
 }
@@ -42,12 +59,12 @@ async function downloadMonthlyData() {
 async function combineJsonFilesToLongExcel() {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('CombinedData');
-    const months = Array.from({ length: 11 }, (_, i) => i + 1);
 
     let headersAdded = false;
+    const files = fs.readdirSync(downloadFolder).filter(file => file.endsWith('.json'));
 
-    for (const month of months) {
-        const filePath = path.join(downloadFolder, `tickets_2024_${month}.json`);
+    for (const fileName of files) {
+        const filePath = path.join(downloadFolder, fileName);
 
         try {
             const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -56,7 +73,7 @@ async function combineJsonFilesToLongExcel() {
                 // Add headers only once, based on the first file's data structure
                 if (!headersAdded) {
                     const headers = Object.keys(data[0]);
-                    sheet.addRow(headers); // Add headers to the first row
+                    sheet.addRow(headers);
                     headersAdded = true;
                 }
 
@@ -66,10 +83,10 @@ async function combineJsonFilesToLongExcel() {
                     sheet.addRow(rowData);
                 });
 
-                console.log(`Added data from month ${month} to Excel`);
+                console.log(`Added data from file ${fileName} to Excel`);
             }
         } catch (error) {
-            console.error(`Failed to read or process JSON file for month ${month}:`, error.message);
+            console.error(`Failed to read or process JSON file ${fileName}:`, error.message);
         }
     }
 
@@ -77,10 +94,9 @@ async function combineJsonFilesToLongExcel() {
     console.log(`Combined Excel saved at: ${combinedFilePath}`);
     return combinedFilePath;
 }
-
 // Main function to download JSON, combine, and provide download link
 async function processAndProvideLink() {
-    await downloadMonthlyData();
+    // await downloadDataByIntervals();
     const combinedFile = await combineJsonFilesToLongExcel();
     console.log(`Download link: ${combinedFile}`);
 }
