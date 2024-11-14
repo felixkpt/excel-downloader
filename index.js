@@ -96,7 +96,7 @@ async function combineJsonFilesToLongExcel() {
 }
 // Main function to download JSON, combine, and provide download link
 async function processAndProvideLink() {
-    // await downloadDataByIntervals();
+    await downloadDataByIntervals();
     const combinedFile = await combineJsonFilesToLongExcel();
     console.log(`Download link: ${combinedFile}`);
 }
